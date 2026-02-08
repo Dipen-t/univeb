@@ -1,0 +1,6 @@
+redis
+requests
+psycopg2-binary
+thefuzz
+python-Levenshtein
+yt-dlp

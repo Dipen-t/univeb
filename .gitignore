@@ -1,0 +1,52 @@
+# --- 1. SECRETS (CRITICAL) ---
+# Never upload environment variables to GitHub
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.pem
+
+# --- 2. GLOBAL OS JUNK ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.log
+
+# --- 3. DOCKER ---
+# Ignore local database data if you mapped it to a folder
+pgdata/
+redisdata/
+
+# --- 4. FRONTEND (Next.js) ---
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/build/
+frontend/dist/
+frontend/.vercel/
+frontend/*.tsbuildinfo
+frontend/next-env.d.ts
+
+# --- 5. BACKEND (Go Conductor) ---
+univibe/conductor/main
+univibe/conductor/main.exe
+univibe/conductor/bin/
+univibe/conductor/vendor/
+
+# --- 6. WORKER (Python Librarian) ---
+univibe/librarian/main
+univibe/librarian/main.exe
+univibe/librarian/bin/
+univibe/librarian/venv/
+univibe/librarian/.venv/
+univibe/librarian/env/
+univibe/librarian/.pytest_cache/
+
+# --- 7. WORKER (Python Librarian) ---
+librarian/*.pyc
+librarian/venv/
+librarian/.venv/
+librarian/env/
+librarian/.pytest_cache/

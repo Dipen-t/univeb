@@ -1,0 +1,76 @@
+version: '3.8'
+
+services:
+  # 1. THE NERVOUS SYSTEM (Redis)
+  # Acts as the communication bus between Go and Python.
+  redis:
+    image: redis:alpine
+    container_name: univibe-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - univibe-net
+
+  # 2. THE LONG-TERM MEMORY (PostgreSQL)
+  # Stores user data, song matches, and history.
+  db:
+    image: postgres:15-alpine
+    container_name: univibe-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - univibe-net
+
+  # 3. THE CONDUCTOR (Go Service)
+  # The WebSocket server.
+  conductor:
+    build:
+      context: ./conductor
+      dockerfile: Dockerfile
+    container_name: univibe-conductor
+    ports:
+      - "8080:8080"
+    depends_on:
+      - redis
+      - db
+    environment:
+      - REDIS_ADDR=redis:6379
+      - DB_URL=postgres://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}?sslmode=disable
+    networks:
+      - univibe-net
+    # Hot Reload: Mounts your local code into the container so you don't have to rebuild constantly
+    # volumes:
+    #   - ./conductor:/app
+
+  # 4. THE LIBRARIAN (Python Service)
+  # The Worker that searches YouTube/Spotify.
+  librarian:
+    build:
+      context: ./librarian
+      dockerfile: Dockerfile
+    container_name: univibe-librarian
+    depends_on:
+      - redis
+      - db
+    environment:
+      - REDIS_HOST=redis
+      - DB_URL=postgresql://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}
+    networks:
+      - univibe-net
+    volumes:
+      - ./librarian:/app
+
+# Define the network so containers can talk to each other
+networks:
+  univibe-net:
+    driver: bridge
+
+# Persist database data even if containers are destroyed
+volumes:
+  pgdata:
