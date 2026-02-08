@@ -4,17 +4,19 @@ FROM golang:1.22-alpine
 # Set working directory
 WORKDIR /app
 
-# Install git (needed for go mod)
-RUN apk add --no-cache git
+# --- FIX START ---
+# Install git AND security certificates (Crucial for Upstash/SSL)
+RUN apk add --no-cache git ca-certificates
+# --- FIX END ---
 
-# Copy go.mod
-COPY go.mod ./
+# Copy go.mod and go.sum
+COPY go.mod go.sum ./
+
+# Download dependencies
+RUN go mod download
 
 # Copy the source code
 COPY . .
-
-# FORCE generate the go.sum file
-RUN go mod tidy
 
 # Build the Go app
 RUN go build -o main .
