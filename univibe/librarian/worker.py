@@ -102,4 +102,5 @@ while True:
                 print(f"⚠️ No valid results found for {query}")
             
     except Exception as e:
-        print(f"❌ Worker Error: {e}")
+        print(f"❌ Worker issue: {e}")
+        
