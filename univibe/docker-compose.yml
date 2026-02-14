@@ -1,76 +1,58 @@
 version: '3.8'
 
 services:
-  # 1. THE NERVOUS SYSTEM (Redis)
-  # Acts as the communication bus between Go and Python.
+  # 1. The Brain (Redis)
   redis:
-    image: redis:alpine
     container_name: univibe-redis
+    image: redis:alpine
     ports:
       - "6379:6379"
-    networks:
-      - univibe-net
+    volumes:
+      - redis_data:/data
+    restart: always
 
-  # 2. THE LONG-TERM MEMORY (PostgreSQL)
-  # Stores user data, song matches, and history.
+  # 2. The Memory (Postgres)
   db:
+    container_name: univibe-db
     image: postgres:15-alpine
-    container_name: univibe-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: univibe
     ports:
       - "5432:5432"
-    environment:
-      POSTGRES_USER: ${DB_USER}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-      POSTGRES_DB: ${DB_NAME}
     volumes:
-      - pgdata:/var/lib/postgresql/data
-    networks:
-      - univibe-net
+      - db_data:/var/lib/postgresql/data
 
-  # 3. THE CONDUCTOR (Go Service)
-  # The WebSocket server.
+  # 3. The Conductor (Go Backend)
   conductor:
-    build:
-      context: ./conductor
-      dockerfile: Dockerfile
     container_name: univibe-conductor
+    build: ./conductor
     ports:
       - "8080:8080"
-    depends_on:
-      - redis
-      - db
     environment:
       - REDIS_ADDR=redis:6379
-      - DB_URL=postgres://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}?sslmode=disable
-    networks:
-      - univibe-net
-    # Hot Reload: Mounts your local code into the container so you don't have to rebuild constantly
-    # volumes:
-    #   - ./conductor:/app
-
-  # 4. THE LIBRARIAN (Python Service)
-  # The Worker that searches YouTube/Spotify.
-  librarian:
-    build:
-      context: ./librarian
-      dockerfile: Dockerfile
-    container_name: univibe-librarian
+      - DATABASE_URL=postgres://user:password@db:5432/univibe?sslmode=disable
+      - PORT=8080
     depends_on:
       - redis
       - db
+    # No volumes here! This ensures we run the BUILT code, not the local file.
+    restart: on-failure
+
+  # 4. The Librarian (Python Worker)
+  librarian:
+    container_name: univibe-librarian
+    build: ./librarian
     environment:
-      - REDIS_HOST=redis
-      - DB_URL=postgresql://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}
-    networks:
-      - univibe-net
-    volumes:
-      - ./librarian:/app
+      - REDIS_URL=redis://redis:6379
+      # If you use a .env file for the API Key, uncomment this:
+      # - YOUTUBE_API_KEY=${YOUTUBE_API_KEY}
+    depends_on:
+      - redis
+    restart: on-failure
 
-# Define the network so containers can talk to each other
-networks:
-  univibe-net:
-    driver: bridge
-
-# Persist database data even if containers are destroyed
 volumes:
-  pgdata:
+  redis_data:
+  db_data:

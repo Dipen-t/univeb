@@ -1,25 +1,16 @@
-# Use the official Golang image
-FROM golang:1.22-alpine
+FROM golang:1.24-alpine
 
-# Set working directory
 WORKDIR /app
 
-# --- FIX START ---
-# Install git AND security certificates (Crucial for Upstash/SSL)
-RUN apk add --no-cache git ca-certificates
-# --- FIX END ---
-
-# Copy go.mod and go.sum
+# 1. Install dependencies
+RUN apk add --no-cache git
 COPY go.mod go.sum ./
-
-# Download dependencies
 RUN go mod download
 
-# Copy the source code
-COPY . .
+# 2. COPY EVERYTHING (Crucial: This copies handlers, models, repo folders)
+COPY . . 
 
-# Build the Go app
+# 3. Build
 RUN go build -o main .
 
-# Run the executable
 CMD ["./main"]
