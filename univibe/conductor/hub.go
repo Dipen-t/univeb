@@ -52,23 +52,22 @@ func (h *Hub) run() {
 			}
 
 		case message := <-h.broadcast:
-			// NEW: We expect the frontend to send the room code in every message
 			var msg struct {
 				Type string      `json:"type"`
 				Data interface{} `json:"data"`
-				Room string      `json:"room"` // <--- NEW
+				Room string      `json:"room"`
 			}
 			if err := json.Unmarshal(message, &msg); err != nil {
 				continue
 			}
 
-			// Look up the actual room from the payload, not hardcoded "demo_room"
+			// Look up the actual room from the payload
 			room, err := h.repo.GetRoom(msg.Room)
 			if err != nil {
 				continue
 			}
 			roomID := room.ID
-			roomCode := room.Code // e.g., "XJ9Z"
+			roomCode := room.Code
 
 			var response *models.WebSocketMessage
 
@@ -109,7 +108,7 @@ func (h *Hub) run() {
 				query, ok := msg.Data.(string)
 				if ok {
 					log.Printf("🔍 Search Request in %s: %s", roomCode, query)
-					h.pushSearchJob(roomCode, query) // Use dynamic roomCode
+					h.pushSearchJob(roomCode, query)
 				}
 				continue
 
@@ -135,11 +134,10 @@ func (h *Hub) run() {
 	}
 }
 
-// --- NEW HELPER: BROADCAST TO SPECIFIC ROOM ---
+// --- HELPER: BROADCAST TO SPECIFIC ROOM ---
 func (h *Hub) broadcastToRoom(roomCode string, v interface{}) {
 	msg, _ := json.Marshal(v)
 	for client := range h.clients {
-		// Only send if the client's connected room matches the target room!
 		if client.roomID == roomCode {
 			select {
 			case client.send <- msg:
@@ -151,7 +149,7 @@ func (h *Hub) broadcastToRoom(roomCode string, v interface{}) {
 	}
 }
 
-// --- UPDATED HELPER: BROADCAST QUEUE ---
+// --- HELPER: BROADCAST QUEUE ---
 func (h *Hub) broadcastQueue(roomID string, roomCode string) {
 	items, err := h.repo.GetQueue(roomID)
 	if err != nil {
@@ -176,7 +174,7 @@ func (h *Hub) broadcastQueue(roomID string, roomCode string) {
 	})
 }
 
-// --- REDIS LISTENER ---
+// --- REDIS LISTENER (FIXED FOR UUIDs) ---
 func (h *Hub) listenToRedis() {
 	pubsub := h.rdb.Subscribe(context.Background(), "room_updates")
 	defer pubsub.Close()
@@ -184,7 +182,7 @@ func (h *Hub) listenToRedis() {
 
 	for msg := range ch {
 		var incoming struct {
-			RoomCode string `json:"room_id"` // This is the 4-letter code sent by Redis
+			RoomCode string `json:"room_id"`
 			Payload  struct {
 				Type string `json:"type"`
 				Data struct {
@@ -208,17 +206,36 @@ func (h *Hub) listenToRedis() {
 			}
 			roomID := room.ID
 
+			// ----------------------------------------------------
+			// FIX: Robust logic to handle UUID creation
+			// ----------------------------------------------------
 			var song models.Song
-			h.repo.DB.FirstOrCreate(&song, models.Song{
-				YoutubeID: data.YoutubeID,
-				Title:     data.Title,
-				Artist:    data.Artist,
-				CoverURL:  "https://img.youtube.com/vi/" + data.YoutubeID + "/hqdefault.jpg",
-			})
+			// 1. Check if song exists
+			err = h.repo.DB.Where("youtube_id = ?", data.YoutubeID).First(&song).Error
+
+			if err != nil {
+				// 2. Not found? Create it!
+				song = models.Song{
+					YoutubeID: data.YoutubeID,
+					Title:     data.Title,
+					Artist:    data.Artist,
+					CoverURL:  "https://img.youtube.com/vi/" + data.YoutubeID + "/hqdefault.jpg",
+				}
+				// GORM will create it and fill song.ID with the new UUID
+				if createErr := h.repo.DB.Create(&song).Error; createErr != nil {
+					log.Printf("❌ Failed to create song: %v", createErr)
+					continue
+				}
+			}
+
+			// ----------------------------------------------------
+			// End Fix: song.ID is now guaranteed to be valid
+			// ----------------------------------------------------
 
 			current, _ := h.repo.GetCurrent(roomID)
 
 			if current == nil {
+				// Create Playing Item
 				newItem := models.QueueItem{RoomID: roomID, SongID: song.ID, Status: "playing", Position: 0}
 				h.repo.DB.Create(&newItem)
 
@@ -226,8 +243,10 @@ func (h *Hub) listenToRedis() {
 				h.broadcastToRoom(incoming.RoomCode, models.WebSocketMessage{Type: "PLAY_NOW", Data: newItem.Song})
 				h.broadcastQueue(roomID, incoming.RoomCode)
 			} else {
+				// Create Waiting Item
 				var lastPos int
 				h.repo.DB.Model(&models.QueueItem{}).Where("room_id = ?", roomID).Select("COALESCE(MAX(position), 0)").Scan(&lastPos)
+				
 				newItem := models.QueueItem{RoomID: roomID, SongID: song.ID, Status: "waiting", Position: lastPos + 1}
 				h.repo.DB.Create(&newItem)
 
@@ -286,7 +305,6 @@ func (h *Hub) SendInitialState(client *Client) {
 
 func (h *Hub) pushSearchJob(roomCode string, query string) {
 	ctx := context.Background()
-	// Pass the 4-letter code to Redis so Librarian knows where to return it
 	job := map[string]string{"room_id": roomCode, "query": query}
 	jsonJob, _ := json.Marshal(job)
 	h.rdb.LPush(ctx, "search_queue", jsonJob)
