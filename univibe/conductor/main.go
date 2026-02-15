@@ -30,7 +30,9 @@ func connectDB() {
 
 	// Retry loop (wait for DB to wake up)
 	for i := 0; i < 10; i++ {
-		db, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
+		db, err = gorm.Open(postgres.Open(dsn), &gorm.Config{
+			PrepareStmt: false,
+		})
 		if err == nil {
 			log.Println("✅ Connected to Postgres!")
 
